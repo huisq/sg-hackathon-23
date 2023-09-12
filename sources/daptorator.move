@@ -119,8 +119,6 @@ module admin::daptorator{
         assert_admin(signer::address_of(admin));
         let (resource_signer, resource_cap) = account::create_resource_account(admin, SEED);
 
-        coin::register<AptosCoin>(&resource_signer);
-
         // Create an NFT collection with an unlimied supply and the following aspects:
         collection::create_unlimited_collection(
             &resource_signer,
@@ -157,7 +155,6 @@ module admin::daptorator{
     ) acquires State {
         let review_hash = bcs::to_bytes(&metadata);
         assert_metadata_not_duplicated(review_hash);
-        //check_if_user_has_enough_apt(signer::address_of(reviewer));
         let state = borrow_global_mut<State>(@admin);
         let res_signer = account::create_signer_with_capability(&state.signer_cap);
 
@@ -190,6 +187,63 @@ module admin::daptorator{
             &mut state.review_submitted_events,
             ReviewSubmitted{
                 reviewer: signer::address_of(reviewer),
+                review_token_address: object::address_from_constructor_ref(&token_const_ref),
+                metadata,
+                category,
+                domain_address,
+                site_url,
+                site_type,
+                site_tag,
+                site_safety,
+                timestamp: timestamp::now_seconds()
+            });
+    }
+
+    public entry fun submit_review_admin_sign(
+        admin: &signer,
+        reviewer: address,
+        metadata: String,
+        category: String,
+        domain_address: String,
+        site_url: String,
+        site_type: String,
+        site_tag: vector<String>,
+        site_safety: String
+    ) acquires State {
+        let review_hash = bcs::to_bytes(&metadata);
+        assert_metadata_not_duplicated(review_hash);
+        let state = borrow_global_mut<State>(@admin);
+        let res_signer = account::create_signer_with_capability(&state.signer_cap);
+
+        // Create a new named token:
+        let token_const_ref = token::create_named_token(
+            &res_signer,
+            string::utf8(COLLECTION_NAME),
+            string::utf8(TOKEN_DESCRIPTION),
+            metadata,
+            option::none(),
+            metadata
+        );
+
+        let obj_signer = object::generate_signer(&token_const_ref);
+
+        // Transfer the token to the reviewer account
+        object::transfer_raw(&res_signer, object::address_from_constructor_ref(&token_const_ref), reviewer);
+
+        // Create the ReviewToken object and move it to the new token object signer
+        let new_review_token = ReviewToken{
+            mutator_ref: token::generate_mutator_ref(&token_const_ref),
+            burn_ref: token::generate_burn_ref(&token_const_ref),
+        };
+
+        move_to(&obj_signer, new_review_token);
+        simple_map::add(&mut state.metadatas, review_hash, object::address_from_constructor_ref(&token_const_ref));
+
+        // Emit a new ReviewSubmittedEvent
+        event::emit_event<ReviewSubmitted>(
+            &mut state.review_submitted_events,
+            ReviewSubmitted{
+                reviewer,
                 review_token_address: object::address_from_constructor_ref(&token_const_ref),
                 metadata,
                 category,
@@ -253,10 +307,6 @@ module admin::daptorator{
         assert!(admin == @admin,SIGNER_NOT_ADMIN);
     }
 
-    // inline fun check_if_user_has_enough_apt(user: address) {
-    //     assert!(coin::balance<AptosCoin>(user) > 0, INSUFFICIENT_APT_BALANCE);
-    // }
-
     inline fun assert_metadata_not_duplicated(review_hash: vector<u8>) {
         let state = borrow_global<State>(@admin);
         assert!(!simple_map::contains_key(&state.metadatas, &review_hash), METADATA_DUPLICATED);
@@ -272,10 +322,6 @@ module admin::daptorator{
     ) acquires State {
         let admin_address = signer::address_of(admin);
         account::create_account_for_test(admin_address);
-
-        let aptos_framework = account::create_account_for_test(@aptos_framework);
-        let (burn_cap, mint_cap) =
-            aptos_coin::initialize_for_test(&aptos_framework);
 
         init_module(admin);
 
@@ -319,9 +365,6 @@ module admin::daptorator{
             2
         );
 
-        coin::destroy_burn_cap(burn_cap);
-        coin::destroy_mint_cap(mint_cap);
-
         assert!(event::counter(&state.review_submitted_events) == 0, 2);
         assert!(event::counter(&state.review_deleted_events) == 0, 2);
     }
@@ -335,13 +378,6 @@ module admin::daptorator{
         let reviwer_address = signer::address_of(reviewer);
         account::create_account_for_test(admin_address);
         account::create_account_for_test(reviwer_address);
-
-        let aptos_framework = account::create_account_for_test(@aptos_framework);
-        timestamp::set_time_has_started_for_testing(&aptos_framework);
-        let (burn_cap, mint_cap) =
-            aptos_coin::initialize_for_test(&aptos_framework);
-        coin::register<AptosCoin>(reviewer);
-        aptos_coin::mint(&aptos_framework, reviwer_address, 1);
 
         init_module(admin);
 
@@ -403,9 +439,6 @@ module admin::daptorator{
             simple_map::length(&state.metadatas) == 1,
             2
         );
-
-        coin::destroy_burn_cap(burn_cap);
-        coin::destroy_mint_cap(mint_cap);
 
         assert!(event::counter(&state.review_submitted_events) == 1, 2);
         assert!(event::counter(&state.review_deleted_events) == 0, 2);
@@ -422,12 +455,6 @@ module admin::daptorator{
         account::create_account_for_test(admin_address);
         account::create_account_for_test(reviwer_address);
 
-        let aptos_framework = account::create_account_for_test(@aptos_framework);
-        timestamp::set_time_has_started_for_testing(&aptos_framework);
-        let (burn_cap, mint_cap) =
-            aptos_coin::initialize_for_test(&aptos_framework);
-        coin::register<AptosCoin>(reviewer);
-
         init_module(admin);
 
         let metadata = string::utf8(b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS");
@@ -489,9 +516,6 @@ module admin::daptorator{
             2
         );
 
-        coin::destroy_burn_cap(burn_cap);
-        coin::destroy_mint_cap(mint_cap);
-
         assert!(event::counter(&state.review_submitted_events) == 1, 2);
         assert!(event::counter(&state.review_deleted_events) == 0, 2);
     }
@@ -506,13 +530,6 @@ module admin::daptorator{
         let reviwer_address = signer::address_of(reviewer);
         account::create_account_for_test(admin_address);
         account::create_account_for_test(reviwer_address);
-
-        let aptos_framework = account::create_account_for_test(@aptos_framework);
-        timestamp::set_time_has_started_for_testing(&aptos_framework);
-        let (burn_cap, mint_cap) =
-            aptos_coin::initialize_for_test(&aptos_framework);
-        coin::register<AptosCoin>(reviewer);
-        aptos_coin::mint(&aptos_framework, reviwer_address, 1);
 
         init_module(admin);
 
@@ -545,9 +562,81 @@ module admin::daptorator{
             site_tag,
             site_safety
         );
+    }
 
-        coin::destroy_burn_cap(burn_cap);
-        coin::destroy_mint_cap(mint_cap);
+    #[test(admin = @admin, reviewer = @0xA)]
+    fun test_reviewer_admin_signer_success(
+        admin: &signer,
+        reviewer: &signer
+    ) acquires State {
+        let admin_address = signer::address_of(admin);
+        let reviewer_address = signer::address_of(reviewer);
+        account::create_account_for_test(admin_address);
+        account::create_account_for_test(reviewer_address);
+
+        init_module(admin);
+
+        let metadata = string::utf8(b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS");
+        let category = string::utf8(b"Website");
+        let domain_address = string::utf8(b"mystic.com");
+        let site_url = string::utf8(b"todo.mystic.com");
+        let site_type = string::utf8(b"Productivity app");
+        let site_tag = vector[string::utf8(b"Web3 Project")];
+        let site_safety = string::utf8(b"Genuine");
+
+        submit_review(
+            reviewer,
+            metadata,
+            category,
+            domain_address,
+            site_url,
+            site_type,
+            site_tag,
+            site_safety
+        );
+
+
+        let resource_account_address = account::create_resource_address(&@admin, SEED);
+
+        let expected_review_token_address = token::create_token_address(
+            &resource_account_address,
+            &string::utf8(b"Review collection name"),
+            &metadata
+        );
+        let review_token_object = object::address_to_object<token::Token>(expected_review_token_address);
+        assert!(
+            object::is_owner(review_token_object, reviewer_address) == true,
+            2
+        );
+        assert!(
+            token::creator(review_token_object) == resource_account_address,
+            2
+        );
+        assert!(
+            token::name(review_token_object) == metadata,
+            2
+        );
+        assert!(
+            token::description(review_token_object) == string::utf8(b"Review token description"),
+            2
+        );
+        assert!(
+            token::uri(review_token_object) == metadata,
+            2
+        );
+        assert!(
+            option::is_none<royalty::Royalty>(&token::royalty(review_token_object)),
+            2
+        );
+
+        let state = borrow_global<State>(admin_address);
+        assert!(
+            simple_map::length(&state.metadatas) == 1,
+            2
+        );
+
+        assert!(event::counter(&state.review_submitted_events) == 1, 2);
+        assert!(event::counter(&state.review_deleted_events) == 0, 2);
     }
 
     #[test(admin = @admin, reviewer = @0xA)]
@@ -559,14 +648,6 @@ module admin::daptorator{
         let reviwer_address = signer::address_of(reviewer);
         account::create_account_for_test(admin_address);
         account::create_account_for_test(reviwer_address);
-
-        let aptos_framework = account::create_account_for_test(@aptos_framework);
-        timestamp::set_time_has_started_for_testing(&aptos_framework);
-        let (burn_cap, mint_cap) =
-            aptos_coin::initialize_for_test(&aptos_framework);
-
-        coin::register<AptosCoin>(reviewer);
-        aptos_coin::mint(&aptos_framework, reviwer_address, 1);
 
         init_module(admin);
 
@@ -599,9 +680,6 @@ module admin::daptorator{
         delete_review(admin, metadata);
 
         assert!(!exists<ReviewToken>(expected_review_token_address), 0);
-
-        coin::destroy_burn_cap(burn_cap);
-        coin::destroy_mint_cap(mint_cap);
 
         let state = borrow_global<State>(admin_address);
         assert!(simple_map::length(&state.metadatas) == 0, 2);
