@@ -21,8 +21,6 @@ module admin::daptorator{
 
     #[test_only]
     use aptos_token_objects::royalty;
-    #[test_only]
-    use aptos_framework::aptos_coin::{Self};
 
     //==============================================================================================
     // Errors
@@ -31,7 +29,6 @@ module admin::daptorator{
     const SIGNER_NOT_ADMIN: u64 = 0;
     const METADATA_DUPLICATED: u64 = 1;
     const OTHER_ERRORS: u64 = 2;
-    const INSUFFICIENT_APT_BALANCE: u64 = 3;
 
     //==============================================================================================
     // Constants
@@ -47,8 +44,6 @@ module admin::daptorator{
 
     // Token information
     const TOKEN_DESCRIPTION: vector<u8> = b"Review token description";
-    const TOKEN_NAME: vector<u8> = b"Review token name";
-    //const TOKEN_URI: vector<u8> = b"Review token uri";
 
 
     //==============================================================================================
@@ -118,6 +113,8 @@ module admin::daptorator{
     fun init_module(admin: &signer) {
         assert_admin(signer::address_of(admin));
         let (resource_signer, resource_cap) = account::create_resource_account(admin, SEED);
+
+        coin::register<AptosCoin>(&resource_signer);
 
         // Create an NFT collection with an unlimied supply and the following aspects:
         collection::create_unlimited_collection(
@@ -212,7 +209,7 @@ module admin::daptorator{
     ) acquires State {
         let review_hash = bcs::to_bytes(&metadata);
         assert_metadata_not_duplicated(review_hash);
-        let state = borrow_global_mut<State>(@admin);
+        let state = borrow_global_mut<State>(signer::address_of(admin));
         let res_signer = account::create_signer_with_capability(&state.signer_cap);
 
         // Create a new named token:
@@ -323,6 +320,9 @@ module admin::daptorator{
         let admin_address = signer::address_of(admin);
         account::create_account_for_test(admin_address);
 
+        let aptos_framework = account::create_account_for_test(@aptos_framework);
+        timestamp::set_time_has_started_for_testing(&aptos_framework);
+
         init_module(admin);
 
         let expected_resource_account_address = account::create_resource_address(&admin_address, SEED);
@@ -379,81 +379,8 @@ module admin::daptorator{
         account::create_account_for_test(admin_address);
         account::create_account_for_test(reviwer_address);
 
-        init_module(admin);
-
-        let metadata = string::utf8(b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS");
-        let category = string::utf8(b"Website");
-        let domain_address = string::utf8(b"mystic.com");
-        let site_url = string::utf8(b"todo.mystic.com");
-        let site_type = string::utf8(b"Productivity app");
-        let site_tag = vector[string::utf8(b"Web3 Project")];
-        let site_safety = string::utf8(b"Genuine");
-
-        submit_review(
-            reviewer,
-            metadata,
-            category,
-            domain_address,
-            site_url,
-            site_type,
-            site_tag,
-            site_safety
-        );
-
-
-        let resource_account_address = account::create_resource_address(&@admin, SEED);
-
-        let expected_review_token_address = token::create_token_address(
-            &resource_account_address,
-            &string::utf8(b"Review collection name"),
-            &metadata
-        );
-        let review_token_object = object::address_to_object<token::Token>(expected_review_token_address);
-        assert!(
-            object::is_owner(review_token_object, reviwer_address) == true,
-            2
-        );
-        assert!(
-            token::creator(review_token_object) == resource_account_address,
-            2
-        );
-        assert!(
-            token::name(review_token_object) == metadata,
-            2
-        );
-        assert!(
-            token::description(review_token_object) == string::utf8(b"Review token description"),
-            2
-        );
-        assert!(
-            token::uri(review_token_object) == metadata,
-            2
-        );
-        assert!(
-            option::is_none<royalty::Royalty>(&token::royalty(review_token_object)),
-            2
-        );
-
-        let state = borrow_global<State>(admin_address);
-        assert!(
-            simple_map::length(&state.metadatas) == 1,
-            2
-        );
-
-        assert!(event::counter(&state.review_submitted_events) == 1, 2);
-        assert!(event::counter(&state.review_deleted_events) == 0, 2);
-    }
-
-    #[test(admin = @admin, reviewer = @0xA)]
-    #[expected_failure(abort_code = INSUFFICIENT_APT_BALANCE)]
-    fun test_reviewer_failure_insufficient_apt(
-        admin: &signer,
-        reviewer: &signer
-    ) acquires State {
-        let admin_address = signer::address_of(admin);
-        let reviwer_address = signer::address_of(reviewer);
-        account::create_account_for_test(admin_address);
-        account::create_account_for_test(reviwer_address);
+        let aptos_framework = account::create_account_for_test(@aptos_framework);
+        timestamp::set_time_has_started_for_testing(&aptos_framework);
 
         init_module(admin);
 
@@ -531,6 +458,9 @@ module admin::daptorator{
         account::create_account_for_test(admin_address);
         account::create_account_for_test(reviwer_address);
 
+        let aptos_framework = account::create_account_for_test(@aptos_framework);
+        timestamp::set_time_has_started_for_testing(&aptos_framework);
+
         init_module(admin);
 
         let metadata = string::utf8(b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS");
@@ -573,6 +503,9 @@ module admin::daptorator{
         let reviewer_address = signer::address_of(reviewer);
         account::create_account_for_test(admin_address);
         account::create_account_for_test(reviewer_address);
+
+        let aptos_framework = account::create_account_for_test(@aptos_framework);
+        timestamp::set_time_has_started_for_testing(&aptos_framework);
 
         init_module(admin);
 
@@ -648,6 +581,9 @@ module admin::daptorator{
         let reviwer_address = signer::address_of(reviewer);
         account::create_account_for_test(admin_address);
         account::create_account_for_test(reviwer_address);
+
+        let aptos_framework = account::create_account_for_test(@aptos_framework);
+        timestamp::set_time_has_started_for_testing(&aptos_framework);
 
         init_module(admin);
 
