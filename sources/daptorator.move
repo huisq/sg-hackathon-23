@@ -86,7 +86,7 @@ module admin::daptorator{
         domain_address: String,
         site_url: String,
         site_type: String,
-        site_tag: vector<String>,
+        site_tag: String,
         site_safety: String,
         // timestamp
         timestamp: u64
@@ -147,7 +147,7 @@ module admin::daptorator{
         domain_address: String,
         site_url: String,
         site_type: String,
-        site_tag: vector<String>,
+        site_tag: String,
         site_safety: String
     ) acquires State {
         let review_hash = bcs::to_bytes(&metadata);
@@ -196,6 +196,7 @@ module admin::daptorator{
             });
     }
 
+    //delegate mint - will not cost users to mint reviews
     public entry fun submit_review_admin_sign(
         admin: &signer,
         reviewer: address,
@@ -204,7 +205,7 @@ module admin::daptorator{
         domain_address: String,
         site_url: String,
         site_type: String,
-        site_tag: vector<String>,
+        site_tag: String,
         site_safety: String
     ) acquires State {
         let review_hash = bcs::to_bytes(&metadata);
@@ -266,8 +267,11 @@ module admin::daptorator{
         let review_token = move_from<ReviewToken>(review_token_address);
         let ReviewToken{mutator_ref: _, burn_ref} = review_token;
 
-        // Burn the token's property_map and the token
+        // Burn the the token
         token::burn(burn_ref);
+
+        // Note that since named objects have deterministic addresses, they cannot be deleted.
+        // This is to prevent a malicious user from creating an object with the same seed as a named object and deleting it.
 
         // Emit a new ReviewDeletedEvent
         simple_map::remove(&mut state.metadatas, &review_hash);
@@ -389,7 +393,7 @@ module admin::daptorator{
         let domain_address = string::utf8(b"mystic.com");
         let site_url = string::utf8(b"todo.mystic.com");
         let site_type = string::utf8(b"Productivity app");
-        let site_tag = vector[string::utf8(b"Web3 Project")];
+        let site_tag = string::utf8(b"Web3 Project");
         let site_safety = string::utf8(b"Genuine");
 
         submit_review(
@@ -468,7 +472,7 @@ module admin::daptorator{
         let domain_address = string::utf8(b"mystic.com");
         let site_url = string::utf8(b"todo.mystic.com");
         let site_type = string::utf8(b"Productivity app");
-        let site_tag = vector[string::utf8(b"Web3 Project")];
+        let site_tag = string::utf8(b"Web3 Project");
         let site_safety = string::utf8(b"Genuine");
 
         submit_review(
@@ -514,7 +518,7 @@ module admin::daptorator{
         let domain_address = string::utf8(b"mystic.com");
         let site_url = string::utf8(b"todo.mystic.com");
         let site_type = string::utf8(b"Productivity app");
-        let site_tag = vector[string::utf8(b"Web3 Project")];
+        let site_tag = string::utf8(b"Web3 Project");
         let site_safety = string::utf8(b"Genuine");
 
         submit_review(
@@ -592,7 +596,7 @@ module admin::daptorator{
         let domain_address = string::utf8(b"mystic.com");
         let site_url = string::utf8(b"todo.mystic.com");
         let site_type = string::utf8(b"Productivity app");
-        let site_tag = vector[string::utf8(b"Web3 Project")];
+        let site_tag = string::utf8(b"Web3 Project");
         let site_safety = string::utf8(b"Genuine");
 
         submit_review(
