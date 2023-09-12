@@ -17,6 +17,7 @@ module admin::daptorator{
     use aptos_framework::aptos_coin::{AptosCoin};
     use aptos_std::simple_map;
     use aptos_std::simple_map::SimpleMap;
+    use std::bcs;
 
     #[test_only]
     use aptos_token_objects::royalty;
@@ -84,7 +85,7 @@ module admin::daptorator{
         // token address of review
         review_token_address: address,
         // review hash
-        metadata: vector<u8>,
+        metadata: String,
         //output log for frontend
         category: String,
         domain_address: String,
@@ -97,8 +98,8 @@ module admin::daptorator{
     }
 
     struct ReviewDeleted has store, drop {
-        // token address of review
-        review_token_address: address,
+        // review_hash
+        metadata: String,
         // address of the account owning the review
         reviewer: address,
         // timestamp
@@ -121,10 +122,6 @@ module admin::daptorator{
         coin::register<AptosCoin>(&resource_signer);
 
         // Create an NFT collection with an unlimied supply and the following aspects:
-        //          - name: COLLECTION_NAME
-        //          - description: COLLECTION_DESCRIPTION
-        //          - uri: COLLECTION_URI
-        //          - royalty: no royalty
         collection::create_unlimited_collection(
             &resource_signer,
             string::utf8(COLLECTION_DESCRIPTION),
@@ -150,7 +147,7 @@ module admin::daptorator{
 */
     public entry fun submit_review(
         reviewer: &signer,
-        metadata: vector<u8>,
+        metadata: String,
         category: String,
         domain_address: String,
         site_url: String,
@@ -158,8 +155,9 @@ module admin::daptorator{
         site_tag: vector<String>,
         site_safety: String
     ) acquires State {
-        assert_metadata_not_duplicated(metadata);
-        check_if_user_has_enough_apt(signer::address_of(reviewer));
+        let review_hash = bcs::to_bytes(&metadata);
+        assert_metadata_not_duplicated(review_hash);
+        //check_if_user_has_enough_apt(signer::address_of(reviewer));
         let state = borrow_global_mut<State>(@admin);
         let res_signer = account::create_signer_with_capability(&state.signer_cap);
 
@@ -168,9 +166,9 @@ module admin::daptorator{
             &res_signer,
             string::utf8(COLLECTION_NAME),
             string::utf8(TOKEN_DESCRIPTION),
-            string::utf8(TOKEN_NAME),
+            metadata,
             option::none(),
-            string::utf8(metadata)
+            metadata
         );
 
         let obj_signer = object::generate_signer(&token_const_ref);
@@ -185,7 +183,7 @@ module admin::daptorator{
         };
 
         move_to(&obj_signer, new_review_token);
-        simple_map::add(&mut state.metadatas, metadata, object::address_from_constructor_ref(&token_const_ref));
+        simple_map::add(&mut state.metadatas, review_hash, object::address_from_constructor_ref(&token_const_ref));
 
         // Emit a new ReviewSubmittedEvent
         event::emit_event<ReviewSubmitted>(
@@ -206,8 +204,9 @@ module admin::daptorator{
 
     public entry fun delete_review(
         admin: &signer,
-        review_hash: vector<u8>
+        metadata: String
     ) acquires State, ReviewToken {
+        let review_hash = bcs::to_bytes(&metadata);
         assert_admin(signer::address_of(admin));
         let state = borrow_global_mut<State>(@admin);
         let review_token_address = *simple_map::borrow(&state.metadatas, &review_hash);
@@ -224,7 +223,7 @@ module admin::daptorator{
         event::emit_event<ReviewDeleted>(
             &mut state.review_deleted_events,
             ReviewDeleted{
-                review_token_address,
+                metadata,
                 reviewer,
                 timestamp: timestamp::now_seconds()
             });
@@ -234,7 +233,17 @@ module admin::daptorator{
     // Helper functions
     //==============================================================================================
 
+    #[view]
+    public fun check_if_metadata_exists(metadata: String): bool acquires State {
+        let state = borrow_global<State>(@admin);
+        simple_map::contains_key(&state.metadatas, &bcs::to_bytes(&metadata))
+    }
 
+    #[view]
+    public fun total_reviews(): u64 acquires State {
+        let state = borrow_global<State>(@admin);
+        simple_map::length(&state.metadatas)
+    }
 
     //==============================================================================================
     // Validation functions
@@ -244,13 +253,13 @@ module admin::daptorator{
         assert!(admin == @admin,SIGNER_NOT_ADMIN);
     }
 
-    inline fun check_if_user_has_enough_apt(user: address) {
-        assert!(coin::balance<AptosCoin>(user) > 0, INSUFFICIENT_APT_BALANCE);
-    }
+    // inline fun check_if_user_has_enough_apt(user: address) {
+    //     assert!(coin::balance<AptosCoin>(user) > 0, INSUFFICIENT_APT_BALANCE);
+    // }
 
-    inline fun assert_metadata_not_duplicated(metadata: vector<u8>) {
+    inline fun assert_metadata_not_duplicated(review_hash: vector<u8>) {
         let state = borrow_global<State>(@admin);
-        assert!(!simple_map::contains_key(&state.metadatas, &metadata), METADATA_DUPLICATED);
+        assert!(!simple_map::contains_key(&state.metadatas, &review_hash), METADATA_DUPLICATED);
     }
 
     //==============================================================================================
@@ -336,7 +345,7 @@ module admin::daptorator{
 
         init_module(admin);
 
-        let metadata = b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS";
+        let metadata = string::utf8(b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS");
         let category = string::utf8(b"Website");
         let domain_address = string::utf8(b"mystic.com");
         let site_url = string::utf8(b"todo.mystic.com");
@@ -361,7 +370,7 @@ module admin::daptorator{
         let expected_review_token_address = token::create_token_address(
             &resource_account_address,
             &string::utf8(b"Review collection name"),
-            &string::utf8(b"Review token name")
+            &metadata
         );
         let review_token_object = object::address_to_object<token::Token>(expected_review_token_address);
         assert!(
@@ -373,7 +382,7 @@ module admin::daptorator{
             2
         );
         assert!(
-            token::name(review_token_object) == string::utf8(b"Review token name"),
+            token::name(review_token_object) == metadata,
             2
         );
         assert!(
@@ -381,7 +390,7 @@ module admin::daptorator{
             2
         );
         assert!(
-            token::uri(review_token_object) == string::utf8(metadata),
+            token::uri(review_token_object) == metadata,
             2
         );
         assert!(
@@ -421,7 +430,7 @@ module admin::daptorator{
 
         init_module(admin);
 
-        let metadata = b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS";
+        let metadata = string::utf8(b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS");
         let category = string::utf8(b"Website");
         let domain_address = string::utf8(b"mystic.com");
         let site_url = string::utf8(b"todo.mystic.com");
@@ -446,7 +455,7 @@ module admin::daptorator{
         let expected_review_token_address = token::create_token_address(
             &resource_account_address,
             &string::utf8(b"Review collection name"),
-            &string::utf8(b"Review token name")
+            &metadata
         );
         let review_token_object = object::address_to_object<token::Token>(expected_review_token_address);
         assert!(
@@ -458,7 +467,7 @@ module admin::daptorator{
             2
         );
         assert!(
-            token::name(review_token_object) == string::utf8(b"Review token name"),
+            token::name(review_token_object) == metadata,
             2
         );
         assert!(
@@ -466,7 +475,7 @@ module admin::daptorator{
             2
         );
         assert!(
-            token::uri(review_token_object) == string::utf8(metadata),
+            token::uri(review_token_object) == metadata,
             2
         );
         assert!(
@@ -507,7 +516,7 @@ module admin::daptorator{
 
         init_module(admin);
 
-        let metadata = b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS";
+        let metadata = string::utf8(b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS");
         let category = string::utf8(b"Website");
         let domain_address = string::utf8(b"mystic.com");
         let site_url = string::utf8(b"todo.mystic.com");
@@ -561,7 +570,7 @@ module admin::daptorator{
 
         init_module(admin);
 
-        let metadata = b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS";
+        let metadata = string::utf8(b"QmSYRXWGGqVDAHKTwfnYQDR74d4bfwXxudFosbGA695AWS");
         let category = string::utf8(b"Website");
         let domain_address = string::utf8(b"mystic.com");
         let site_url = string::utf8(b"todo.mystic.com");
@@ -585,7 +594,7 @@ module admin::daptorator{
         let expected_review_token_address = token::create_token_address(
             &resource_account_address,
             &string::utf8(b"Review collection name"),
-            &string::utf8(b"Review token name")
+            &metadata
         );
         delete_review(admin, metadata);
 
