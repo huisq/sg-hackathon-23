@@ -66,15 +66,15 @@ module admin::daptorator{
         // SimpleMap<Metadata, review_token_address>
         metadatas: SimpleMap<vector<u8>, address>,
         // Events
-        review_submitted_events: EventHandle<ReviewSubmitted>,
-        review_deleted_events: EventHandle<ReviewDeleted>
+        review_submitted_events: EventHandle<ReviewSubmittedEvent>,
+        review_deleted_events: EventHandle<ReviewDeletedEvent>
     }
 
     //==============================================================================================
     // Event structs
     //==============================================================================================
 
-    struct ReviewSubmitted has store, drop {
+    struct ReviewSubmittedEvent has store, drop {
         // address of the account submitting the review
         reviewer: address,
         // token address of review
@@ -92,7 +92,7 @@ module admin::daptorator{
         timestamp: u64
     }
 
-    struct ReviewDeleted has store, drop {
+    struct ReviewDeletedEvent has store, drop {
         // review_hash
         metadata: String,
         // address of the account owning the review
@@ -129,8 +129,8 @@ module admin::daptorator{
         let state = State{
             signer_cap: resource_cap,
             metadatas: simple_map::new(),
-            review_submitted_events: account::new_event_handle<ReviewSubmitted>(admin),
-            review_deleted_events: account::new_event_handle<ReviewDeleted>(admin)
+            review_submitted_events: account::new_event_handle<ReviewSubmittedEvent>(admin),
+            review_deleted_events: account::new_event_handle<ReviewDeletedEvent>(admin)
         };
         move_to<State>(admin, state);
     }
@@ -167,6 +167,9 @@ module admin::daptorator{
 
         let obj_signer = object::generate_signer(&token_const_ref);
 
+        // Note that since named objects have deterministic addresses, they cannot be deleted.
+        // This is to prevent a malicious user from creating an object with the same seed as a named object and deleting it.
+
         // Transfer the token to the reviewer account
         object::transfer_raw(&res_signer, object::address_from_constructor_ref(&token_const_ref), signer::address_of(reviewer));
 
@@ -180,9 +183,9 @@ module admin::daptorator{
         simple_map::add(&mut state.metadatas, review_hash, object::address_from_constructor_ref(&token_const_ref));
 
         // Emit a new ReviewSubmittedEvent
-        event::emit_event<ReviewSubmitted>(
+        event::emit_event<ReviewSubmittedEvent>(
             &mut state.review_submitted_events,
-            ReviewSubmitted{
+            ReviewSubmittedEvent {
                 reviewer: signer::address_of(reviewer),
                 review_token_address: object::address_from_constructor_ref(&token_const_ref),
                 metadata,
@@ -238,9 +241,9 @@ module admin::daptorator{
         simple_map::add(&mut state.metadatas, review_hash, object::address_from_constructor_ref(&token_const_ref));
 
         // Emit a new ReviewSubmittedEvent
-        event::emit_event<ReviewSubmitted>(
+        event::emit_event<ReviewSubmittedEvent>(
             &mut state.review_submitted_events,
-            ReviewSubmitted{
+            ReviewSubmittedEvent {
                 reviewer,
                 review_token_address: object::address_from_constructor_ref(&token_const_ref),
                 metadata,
@@ -270,14 +273,11 @@ module admin::daptorator{
         // Burn the the token
         token::burn(burn_ref);
 
-        // Note that since named objects have deterministic addresses, they cannot be deleted.
-        // This is to prevent a malicious user from creating an object with the same seed as a named object and deleting it.
-
         // Emit a new ReviewDeletedEvent
         simple_map::remove(&mut state.metadatas, &review_hash);
-        event::emit_event<ReviewDeleted>(
+        event::emit_event<ReviewDeletedEvent>(
             &mut state.review_deleted_events,
-            ReviewDeleted{
+            ReviewDeletedEvent {
                 metadata,
                 reviewer,
                 timestamp: timestamp::now_seconds()
