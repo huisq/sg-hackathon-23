@@ -3,7 +3,7 @@ name = "daptorator"
 version = "1.0.0"
 
 [addresses]
-admin = "_"
+admin = "0xAD"
 
 [dependencies]
 AptosTokenObjects = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-token-objects/", rev = "aptos-cli-v2.0.2" }
